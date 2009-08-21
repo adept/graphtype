@@ -10,19 +10,17 @@ parseFiles = liftM concat . mapM parseFile'
     parseFile' fname = do
       res <- parseFile fname
       case res of
-        ParseOk m -> return $ unlines $ showModule m
+        ParseOk m -> return $ collectDeclarations m
         ParseFailed srcLoc message -> do
           putStrLn $ unlines [ prettyPrint srcLoc
                              , message
                              ]
           exitFailure
 
-showModule moduleDesc =
-  [ show (getName x) | x <- universeBi moduleDesc, isDeclaration x]
+collectDeclarations moduleDesc =
+  [ x | x <- universeBi moduleDesc, isDeclaration x]
+  where
+    isDeclaration (DataDecl _ _ _ nm _ _ _) = True
+    isDeclaration (TypeDecl _ _ _ _) = True
+    isDeclaration _ = False
 
-isDeclaration (DataDecl _ _ _ nm _ _ _) = True
-isDeclaration (TypeDecl _ _ _ _) = True
-isDeclaration _ = False
-
-getName (DataDecl _ _ _ nm _ _ _) = nm
-getName (TypeDecl _ nm _ _) = nm

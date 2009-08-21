@@ -1,10 +1,11 @@
 module Main where
 
+import Parse (parseFiles)
+
 import Language.Haskell.Exts
 import Data.Generics.PlateData (universeBi)
 import Text.Dot
-import Control.Monad
-import System.Exit
+import Data.List
 
 -- | Drawing depth
 data Depth = Inf | Limit Int
@@ -18,30 +19,52 @@ data Depth = Inf | Limit Int
 main = do
   let files = [ "../example/Test01.hs", "../example/Test02.hs" ]
   types <- parseFiles files
-  putStrLn types
   let graph = buildGraph types Inf "Organization"
   writeFile "output.dot" graph
 
-parseFiles = liftM concat . mapM parseFile'
+
+buildGraph types depth root = showDot $ do
+  explainType types root
+
+
+explainType types root = cluster $ do
+  -- 't' stands for 'type'
+  let t = findType types root
+
+  attribute ("label", getName t)
+
+  sequence_ [ explainConstructor c | c <- universeBi t ]
   where
-    parseFile' fname = do
-      res <- parseFile fname
-      case res of
-        ParseOk m -> return $ unlines $ showModule m
-        ParseFailed srcLoc message -> do
-          putStrLn $ unlines [ prettyPrint srcLoc
-                             , message
-                             ]
-          exitFailure
+    collect f t = foldr1 (<||>) $ [ f c | c <- universeBi t ]
 
-showModule moduleDesc =
-  [ show (getName x) | x <- universeBi moduleDesc, isDeclaration x]
+    explainConstructor (ConDecl nm types) = record $ block $ ("ConDecl " ++ fromName nm) <//> collect explainType types
+    explainConstructor (RecDecl nm types) = record $ block $ ("RecDecl " ++ fromName nm) <//> block (foldr1 (<||>) $ map pp types)
+      where pp (nm,t) = concatMap prettyPrint nm ++ "::" ++ prettyPrint t
 
-isDeclaration (DataDecl _ _ _ nm _ _ _) = True
-isDeclaration (TypeDecl _ _ _ _) = True
-isDeclaration _ = False
+    explainType (TyCon qname) = prettyPrint qname
 
-getName (DataDecl _ _ _ nm _ _ _) = nm
-getName (TypeDecl _ nm _ _) = nm
+-- Graph nodes construction helpers
+box label = node $ [ ("shape","box"),("label",label) ]
+record label = node $ [ ("shape","record"),("label",label) ]
 
-buildGraph = undefined
+-- Record label construnction helpers
+infix <||>, <//>
+a <||> b = concat [a, " | ", b]
+a <//> b = concat [ a, " | { ", b, " }"]
+block x = "{ " ++ x ++ " }"
+
+
+-- Haskell AST manipulation helpers
+
+-- TODO: Mb process Map, [] etc in a special way here
+findType types nm =
+  case find ((==nm).getName) types of
+    Just t -> t
+    -- TODO: it might be better to just die here
+    Nothing -> error $ "Failed to fetch definition of " ++ nm
+
+getName (DataDecl _ _ _ nm _ _ _) = fromName nm
+getName (TypeDecl _ nm _ _) = fromName nm
+
+fromName (Ident x) = x
+fromName (Symbol x) = x
