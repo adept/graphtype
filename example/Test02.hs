@@ -1,4 +1,8 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module Test02 where
+
+import Data.ByteString
+import Data.Typeable
 
 data Store = Store
     { storeName_    :: ByteString

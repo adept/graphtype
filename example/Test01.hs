@@ -5,6 +5,7 @@ import Data.ByteString
 import Data.Map
 import Data.Word
 import Data.Typeable
+import Test02
 
 data Organization = Organization
     { orgName_       :: ByteString
@@ -23,7 +24,7 @@ data Organization = Organization
     , certNum_       :: Word64
     , transAccount_  :: Word64
     , mfo_           :: Word64
-    } deriving Typeable
+    } | SomeOtherShit String deriving Typeable
 
 
 data ImportMode = ImportMode
