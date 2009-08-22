@@ -217,8 +217,7 @@ addDecl declName clusters decls = do
                         }
 
 
--- Graph nodes construction helpers
-box label = node $ [ ("shape","box"),("label",label) ]
+-- DOT record node construction helper
 record label = node $ [ ("shape","record"),("label",block label) ]
 
 -- Record label construnction helpers
@@ -229,7 +228,6 @@ block x = "{ " ++ x ++ " }"
 
 
 -- Haskell AST manipulation helpers
-
 findDecl nm decls = find ((==nm).getName) decls
 
 getName (DataDecl _ _ _ nm _ _ _) = fromName nm
