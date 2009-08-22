@@ -9,8 +9,6 @@ import Data.List
 import Data.Maybe
 import Control.Monad
 
-import Debug.Trace
-
 -- | Drawing depth
 data Depth = Inf | Limit Int
 
@@ -50,7 +48,7 @@ type ClusterId = NodeId
 
 mkDL :: DeclName -> Port -> NodeId -> DanglingLink
 mkDL target sourcePort sourceNode = 
-  DL target (\cluster targetNode -> traceShow (sourceNode, sourcePort, cluster, targetNode) (edge' sourceNode (Just sourcePort) targetNode Nothing [("lheadz",show cluster)]))
+  DL target (\cluster targetNode -> edge' sourceNode (Just sourcePort) targetNode Nothing [("lheadz",show cluster)])
 
 -- | Information about clusters already added to the graph:
 -- (Data declaration name, (cluster for this declaration, first node in this cluster))
@@ -96,7 +94,7 @@ addDecl root clusters decls = do
          -- Collect and outgoing links.
          let (TypeDecl _ _ _ t) = d
          let fs = type2fields t
-         fields2record "" fs
+         fields2horizRecord fs
        else do
          -- For data/newtype declaration, create a single record for each constructor.
          -- Collect and outgoing links.
@@ -106,7 +104,13 @@ addDecl root clusters decls = do
   where
     -- TODO: add InfixConDecl
     -- FIXME: remove duplication
-    fields2record header fs = do
+    fields2horizRecord fs = do
+      let label = block $ toLabel $ map typeName fs
+      rId <- record label
+      let links = [ mkLink rId | (F _ _ (Just mkLink)) <- fs ]
+      return (rId, links)
+
+    fields2vertRecord header fs = do
       let label = header <//> ( block $ toLabel $ map typeName fs )
       rId <- record label
       let links = [ mkLink rId | (F _ _ (Just mkLink)) <- fs ]
@@ -114,10 +118,10 @@ addDecl root clusters decls = do
       
     addConstructor (ConDecl nm types) = do
       let fs = concatMap type2fields types
-      fields2record ("ConDecl " ++ fromName nm) fs
+      fields2vertRecord ("ConDecl " ++ fromName nm) fs
     addConstructor (RecDecl nm types) = do
       let fs = concatMap rectype2fields types
-      fields2record ("RecDecl " ++ fromName nm) fs
+      fields2vertRecord ("RecDecl " ++ fromName nm) fs
 
     -- TODO: add names
     rectype2fields (nms,t) = fs
