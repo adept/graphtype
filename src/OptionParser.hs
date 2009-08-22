@@ -12,21 +12,23 @@ import Data.Maybe ( fromMaybe )
 import Control.Monad (when)
 
 data Flag 
-     = Output FilePath | Help
+     = Output FilePath | Trim | Help
        deriving (Eq,Show)
 
 options :: [OptDescr Flag]
 options =
   [ Option ['o']        ["output"]  (OptArg getOutput "file") "Name of the output file (default: output.dot)",
+    Option ['t']        ["trim"]    (NoArg Trim)    "Trim types/newtype that do not have references to other user-defined types",
     Option []           ["help"]    (NoArg Help)    "Show this help" ]
 
 getOutput Nothing = Output "output.dot"
 getOutput (Just s) = Output s
 
-data Mode = Mode { output :: String }
-defaultMode = Mode "output.dot"
+data Mode = Mode { output :: String, trim :: Bool }
+defaultMode = Mode "output.dot" False
 
 update (Output f) m = m { output = f }
+update Trim m       = m { trim = True }
 
 getOpts :: IO (Mode, String, [FilePath])
 getOpts = getArgs >>= \argv ->

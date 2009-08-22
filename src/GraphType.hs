@@ -12,10 +12,21 @@ import Data.Maybe
 import Control.Monad
 
 main = do
-  (Mode output, root, files) <- getOpts
+  (Mode output trim, root, files) <- getOpts
   types <- parseFiles files
-  let graph = buildGraph types root
+  let trimmed = if trim 
+                then doTrim types
+                else types
+  let graph = buildGraph trimmed root
   writeFile output graph
+
+-- | Trim declarations, removing those types and newtypes that do not have references to other user-defined types
+doTrim :: [Decl] -> [Decl]
+doTrim types = types \\ (filter boring candidates)
+  where
+    candidates = [ d | d <- types
+                     , getDeclType d `elem` ["type", "newtype"] ]
+    boring d = null $ catMaybes $ [ findDecl (prettyPrint qname) types | TyCon qname <- universeBi d ]
 
 type DeclName = String
 type Graph = String
