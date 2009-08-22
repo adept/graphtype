@@ -24,30 +24,45 @@ main = do
   let graph = buildGraph types Inf "Organization"
   writeFile "output.dot" graph
 
+-- | Builds dependency graph starting with root declaration `root'.
+-- Recursively expands all user-defined `types' referenced from `root', up to `depth'
 buildGraph types depth root = 
   showDot $ do
+    -- Allow links that end on cluster boundaries
     attribute("compound", "true")
+    -- Add topmost data declaration and proceed with links going from it
     (danglingLinks,clusters) <- addDataDecl root [] types
     addLinks danglingLinks clusters types
 
+type DeclName = String
+type Port = String
+
+-- | Information about dangling link that should be added to graph:
+-- (Source node, Port of source node, Name of the data declaration to link to)
+type Links = [(NodeId,Port,DeclName)]
+
+-- | Information about clusters already added to the graph:
+-- (Data declaration name, (cluster for this declaration, first node in this cluster))
+-- We need info about first node because it is impossible to specify edge not ending on a node.
+type Clusters = [(DeclName, (NodeId, NodeId))]
+
+-- | Add `links' between clusters on graph, adding new clusters as needed
 addLinks :: Links -> Clusters -> [Decl] -> Dot ()
 addLinks [] clusters types = return ()
 addLinks links@((node,port,decl):rest) clusters types = 
   case lookup decl clusters of
-    -- We already have drawn this cluster. Just add link to it
     Just (destCluster, destNode) -> do
+      -- Target cluster is already in the graph. Just add link to it
       edge' node (Just port) destNode Nothing [("lhead",show destCluster)] 
-      -- destination port is set to nothing because we really just want to get to the 
+      -- Destination port is set to nothing because we really just want to get to the 
       -- edge of the destination cluster and that's it
       addLinks rest clusters types
-    -- Cluster for type 'decl' is absent. Add it.
     Nothing -> do
+       -- Cluster for type 'decl' is absent. Add it and proceed with linking.
       (danglingLinks, clusters') <- addDataDecl decl clusters types
       addLinks (links++danglingLinks) clusters' types
 
-type Clusters = [(String, (NodeId, NodeId))] -- Declaration name -> (cluster, node in cluster)
-type Links = [(NodeId,String,String)]
-addDataDecl :: String -> Clusters -> [Decl] -> Dot (Links,Clusters)  
+addDataDecl :: DeclName -> Clusters -> [Decl] -> Dot (Links,Clusters)  
 addDataDecl root clusters types = do
   ( cluster_id, (dest_node, dangling_links) ) <- cluster $ do
     let (Just t) = findType root types
@@ -58,8 +73,10 @@ addDataDecl root clusters types = do
     return (head' nodes, concat links)
   return ( dangling_links, (root, (cluster_id, dest_node)):clusters ) 
   where
+    -- FIXME: remove after specifying all cases in addConstructor
     head' [] = userNodeId (-1)
     head' ns = head ns
+    -- FIXME: remove duplication
     addConstructor (ConDecl nm types) = do
       let recordFields = umap typeToField types
       nodeId <- record $ block $ ("ConDecl " ++ fromName nm) <//> ( block $ toLabel recordFields )
