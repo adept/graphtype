@@ -71,7 +71,7 @@ addLinks links@((DL target mkLink):rest) clusters types =
       (danglingLinks, clusters') <- addDecl target clusters types
       addLinks (links++danglingLinks) clusters' types
 
--- | Record Field
+-- | Field of the record in dot file
 data Field = F { fieldName::Maybe Name
                , typeName::DeclName
                , createFieldLink::(Maybe (NodeId -> DanglingLink)) -- substitude record NodeId here and get a dangling link
@@ -104,18 +104,16 @@ addDecl root clusters decls = do
   where
     -- TODO: add InfixConDecl
     -- FIXME: remove duplication
-    fields2horizRecord fs = do
-      let label = block $ toLabel $ map typeName fs
+    fields2horizRecord fs = mkRecord ( mkLabel fs ) fs
+    fields2vertRecord header fs = mkRecord ( header <//> mkLabel fs ) fs
+
+    mkRecord label fs = do
       rId <- record label
       let links = [ mkLink rId | (F _ _ (Just mkLink)) <- fs ]
       return (rId, links)
 
-    fields2vertRecord header fs = do
-      let label = header <//> ( block $ toLabel $ map typeName fs )
-      rId <- record label
-      let links = [ mkLink rId | (F _ _ (Just mkLink)) <- fs ]
-      return (rId, links)
-      
+    mkLabel fs = block $ toLabel $ map typeName fs
+
     addConstructor (ConDecl nm types) = do
       let fs = concatMap type2fields types
       fields2vertRecord ("ConDecl " ++ fromName nm) fs
