@@ -1,4 +1,4 @@
--- | TODO: top-level docs
+-- | Produce dependency diagram from the set of *.hs files
 module Main where
 
 import Parse (parseFiles)
