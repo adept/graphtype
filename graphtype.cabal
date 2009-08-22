@@ -7,7 +7,7 @@ Category:            Text
 License:             BSD3
 License-file:        LICENSE
 Author:              Dmitry Astapov
-Maintainer:          Dmity Astapov <dastapov@gmail.com>
+Maintainer:          Max Desyatov <explicitcall at gmail.com>
 Build-Depends:       base >=3 && <5 , haskell-src-exts, uniplate, containers, haskell98
 Stability:           alpha
 build-type: 	     Simple
