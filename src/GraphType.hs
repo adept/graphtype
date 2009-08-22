@@ -111,7 +111,9 @@ addDecl declName clusters decls = do
   return ( danglingLinks, clusters' )
   where
     -- Find declaration by name
-    Just d = findDecl declName decls
+    d = case findDecl declName decls of
+          Just x -> x
+          Nothing -> error $ "Could not find type " ++ declName ++ " in source files"
 
     -- Type, newtype or data
     declType = getDeclType d
