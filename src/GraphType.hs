@@ -12,9 +12,9 @@ import Data.Maybe
 import Control.Monad
 
 main = do
-  (Mode depth output, root, files) <- getOpts
+  (Mode output, root, files) <- getOpts
   types <- parseFiles files
-  let graph = buildGraph types depth root
+  let graph = buildGraph types root
   writeFile output graph
 
 type DeclName = String
@@ -22,12 +22,10 @@ type Graph = String
 
 -- | Builds dependency graph starting with datatype declaration `root'.
 -- Recursively expands all user-defined `types' referenced from `root', up to `depth'
--- TODO: use depth
 buildGraph :: [Decl]    -- ^ All declarations found in source files
-           -> Maybe Int -- ^ Recursion depth
            -> DeclName  -- ^ Start from this declaration
            -> Graph     -- ^ Graph definition in DOT syntax
-buildGraph types depth root =
+buildGraph types root =
   showDot $ do
     -- Allow links that end on cluster boundaries
     attribute("compound", "true")
