@@ -1,3 +1,4 @@
+-- | Parses specified *.hs files and returns a list of all data declarations from them
 module Parse (parseFiles) where
 
 import Language.Haskell.Exts
@@ -5,6 +6,7 @@ import Data.Generics.PlateData (universeBi)
 import Control.Monad (liftM)
 import System.Exit (exitFailure)
 
+parseFiles :: [FilePath] -> IO [Decl]
 parseFiles = liftM concat . mapM parseFile'
   where
     parseFile' fname = do

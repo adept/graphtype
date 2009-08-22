@@ -11,6 +11,15 @@ import System.Console.GetOpt
 import Data.Maybe ( fromMaybe )
 import Control.Monad (when)
 
+-- | Mode of operation
+data Mode = Mode { output :: String -- ^ Name of the output file
+                 , trim :: Bool -- ^ Trim trivial types/newtypes or not
+                 }
+
+-- | Default mode: output to "output.dot", dont trim trivial types
+defaultMode = Mode "output.dot" False
+
+
 data Flag 
      = Output FilePath | Trim | Help
        deriving (Eq,Show)
@@ -23,9 +32,6 @@ options =
 
 getOutput Nothing = Output "output.dot"
 getOutput (Just s) = Output s
-
-data Mode = Mode { output :: String, trim :: Bool }
-defaultMode = Mode "output.dot" False
 
 update (Output f) m = m { output = f }
 update Trim m       = m { trim = True }

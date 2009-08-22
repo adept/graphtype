@@ -1,4 +1,9 @@
 -- | Produce dependency diagram from the set of *.hs files
+--
+-- Diagram will include specified top-level declaration and all user-defined types referencd from there (recursively).
+--
+-- User can choose to omit types and newtypes that do not contain anything other than library types - this could be
+-- useful to unclutter really large diagrams
 module Main where
 
 import Parse (parseFiles)
@@ -74,8 +79,9 @@ type ClusterId = NodeId
 
 
 type Port = String
+
 -- | Helper constructor for dangling links.
--- Notice the 'head" attribute - without it the edge would not stop at the cluster boundary
+-- Notice the "lhead" attribute - without it the edge would not stop at the cluster boundary
 mkDL :: DeclName -> Port -> NodeId -> DanglingLink
 mkDL target sourcePort sourceNode =
   DL target (\cluster targetNode -> edge' sourceNode (Just sourcePort) targetNode Nothing [("lhead",show cluster)])
@@ -230,27 +236,34 @@ addDecl declName clusters decls = do
                         }
 
 
--- DOT record node construction helper
+-----------------------------------
+-- DOT record construnction helpers
+-----------------------------------
 record label = node $ [ ("shape","record"),("label",label) ]
 
--- Record label construnction helpers
 infix <||>, <//>
+-- | Append next subfield on the same level
 a <||> b = concat [a, " | ", b]
+-- | Start new sub-level
 a <//> b = concat [ a, " | { ", b, " }"]
+-- | Turn field into a block
 block x = "{ " ++ x ++ " }"
 
-
+-----------------------------------
 -- Haskell AST manipulation helpers
+-----------------------------------
+-- | Find declaration by name
 findDecl nm decls = find ((==nm).getName) decls
 
+-- | Get declaration name
 getName (DataDecl _ _ _ nm _ _ _) = fromName nm
 getName (TypeDecl _ nm _ _) = fromName nm
 
+-- | Get declaration .. ummm .. type. Pretty self-explanatory
 getDeclType (DataDecl _ DataType _ _ _ _ _) = "data"
 getDeclType (DataDecl _ NewType _ _ _ _ _)  = "newtype"
 getDeclType (TypeDecl _ _ _ _)              = "type"
 
+-- | Get name out of the Name datatype
 fromName (Ident x) = x
 fromName (Symbol x) = x
-
-names ns = concat $ intersperse ", " $ map fromName ns

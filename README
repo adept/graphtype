@@ -1,0 +1,13 @@
+Tool to produce dependency diagram from the set of *.hs files. Diagram
+will include specified top-level declaration and all user-defined
+types referencd from there (recursively).
+
+To see dependency diagram for type MegaData and all other types
+referenced from there, use:
+
+        graphtype MegaData *.hs
+
+User can choose to omit types and newtypes that do not contain
+anything other than library types - this could be useful to unclutter
+really large diagrams. Try running "graphtype --trim ..." and see
+whether it helps you or otherwise.
