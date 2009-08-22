@@ -5,7 +5,7 @@ module OptionParser
   )
 where
 
-import System (getArgs)    
+import System.Environment (getArgs)    
 import System.Exit
 import System.Console.GetOpt
 import Data.Maybe ( fromMaybe )
