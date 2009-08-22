@@ -34,7 +34,7 @@ buildGraph types depth root =
     -- Try harder to route edges around clusters
     attribute("remincross", "true")
     -- Try harder to route edges around clusters
-    -- attribute("rankdir", "LR")
+    attribute("rankdir", "LR")
     -- Add topmost declaration and proceed with links going from it
     (danglingLinks,clusters) <- addDecl root [] types
     addLinks danglingLinks clusters types
@@ -220,7 +220,7 @@ addDecl declName clusters decls = do
 
 
 -- DOT record node construction helper
-record label = node $ [ ("shape","record"),("label",block label) ]
+record label = node $ [ ("shape","record"),("label",label) ]
 
 -- Record label construnction helpers
 infix <||>, <//>
