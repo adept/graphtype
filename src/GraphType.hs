@@ -1,3 +1,4 @@
+-- | TODO: top-level docs
 module Main where
 
 import Parse (parseFiles)
@@ -16,10 +17,17 @@ main = do
   let graph = buildGraph types depth root
   writeFile output graph
 
+type DeclName = String
+type Graph = String
+
 -- | Builds dependency graph starting with datatype declaration `root'.
 -- Recursively expands all user-defined `types' referenced from `root', up to `depth'
 -- TODO: use depth
-buildGraph types depth root = 
+buildGraph :: [Decl]    -- ^ All declarations found in source files
+           -> Maybe Int -- ^ Recursion depth
+           -> DeclName  -- ^ Start from this declaration
+           -> Graph     -- ^ Graph definition in DOT syntax
+buildGraph types depth root =
   showDot $ do
     -- Allow links that end on cluster boundaries
     attribute("compound", "true")
@@ -31,46 +39,65 @@ buildGraph types depth root =
     (danglingLinks,clusters) <- addDecl root [] types
     addLinks danglingLinks clusters types
 
-type DeclName = String
-type Port = String
+-- Each declaration is transformed to the cluster on the output graph.
+-- Elements of the cluster are graph nodes, one for each constructor in the declaration.
+-- Those nodes have shape "record".
+-- Since there are "records" with "fields" in dot syntax, and "records" with "fields" in Haskell syntax,
+-- there bound to be some misunderstanding. Unless said otherwise, from now on records and fields
+-- are those from dot syntax.
 
 type Links = [DanglingLink]
--- | Information about dangling link that should be added to graph
-data DanglingLink = DL { linkTarget::DeclName -- name of the declaration to link to
-                       , createLink::(ClusterId -> NodeId -> Dot ()) -- function used to create link once declaration cluster is determined
-                       }
+-- | Information about dangling link that should be added to graph.
+-- We would want to create links while in the middle of constructing a complex record node, which is not possible.
+-- Thus, all outgoing links are scheduled in the list of dangling links and resolved in the breadth-first manner.
+-- Initially, each dangling link is specified via target declaration name. When this declaration is added to graph,
+-- it is possible to find out cluster id and (some) node id corresponding to that declaration and actually build a link.
+--
+-- We have to have some target node id because dot does not allow links to clusters themselves. We choose first node
+-- within a cluster as our target.
+data DanglingLink =
+  DL { linkTarget::DeclName -- ^ destination declaration to link to
+     , createLink::(ClusterId -> NodeId -> Dot ()) -- ^ function used to create link once proper destination cluster is determined
+     }
 type ClusterId = NodeId
 
+
+type Port = String
+-- | Helper constructor for dangling links.
+-- Notice the 'head" attribute - without it the edge would not stop at the cluster boundary
 mkDL :: DeclName -> Port -> NodeId -> DanglingLink
-mkDL target sourcePort sourceNode = 
+mkDL target sourcePort sourceNode =
   DL target (\cluster targetNode -> edge' sourceNode (Just sourcePort) targetNode Nothing [("lhead",show cluster)])
 
 -- | Information about clusters already added to the graph:
--- (Data declaration name, (cluster for this declaration, first node in this cluster))
--- We need info about first node because it is impossible to specify edge not ending on a node.
+-- (Declaration name, (cluster id for this declaration, Id of the first node in this cluster))
 type Clusters = [(DeclName, (NodeId, NodeId))]
 
--- | Add `links' between clusters on graph, adding new clusters as needed
-addLinks :: Links -> Clusters -> [Decl] -> Dot ()
+-- | Add dangling `links' to the graph, adding new clusters as needed
+addLinks :: Links -- ^ Links to be added to the graph
+         -> Clusters -- ^ Clusters already present in graph
+         -> [Decl]  -- ^ All declarations parsed from source files
+         -> Dot ()
 addLinks [] clusters types = return ()
-addLinks links@((DL target mkLink):rest) clusters types = 
+addLinks links@((DL target mkLink):rest) clusters types =
   case lookup target clusters of
     Just (destCluster, destNode) -> do
-      -- Target cluster is already in the graph. Just add link to it
+      -- Target cluster is already in the graph. Just add link to it and proceed
       mkLink destCluster destNode
-      -- Destination port is set to nothing because we really just want to get to the 
-      -- edge of the destination cluster and that's it
       addLinks rest clusters types
     Nothing -> do
-       -- Cluster for type 'decl' is absent. Add it and proceed with linking.
+       -- Target cluster is absent. Add it and re-try linking.
       (danglingLinks, clusters') <- addDecl target clusters types
       addLinks (links++danglingLinks) clusters' types
 
--- | Field of the record in dot file
-data Field = F { fieldName::Maybe Name
-               , fieldPort::Maybe Port
-               , typeName::DeclName
-               , createFieldLink::[Maybe (NodeId -> DanglingLink)] -- substitude record NodeId here and get a dangling link
+
+-- | Each "record" node in the dot file could be decomposed into several fields.
+-- Each field represents a Haskell record field, Haskell datatype component or Haskell type declaration
+data Field = F { fieldName::Maybe Name -- ^ name of the Haskell record field, empty otherwise
+               , fieldPort::Maybe Port -- ^ dot-specific ID of the field, for anchoring originating links. Empty when field has some unknown type
+               , typeName::DeclName    -- ^ user-friendly name of the Haskell type
+               , fieldLink::[Maybe (NodeId -> DanglingLink)] -- ^ As soon as DOT record is finished, its node id is substituted here to
+                                                             -- obtain a dangling link to target declaration. Empty when field has some unknown type
                }
 
 addDecl :: DeclName -- Name of the declaration we have to add
@@ -84,8 +111,8 @@ addDecl root clusters decls = do
 
     attribute ( "label", unwords [ declType, getName d ] )
 
-    if declType == "type" 
-       then do 
+    if declType == "type"
+       then do
          -- For simple type declaration, create a single record depicting type.
          -- Collect and outgoing links.
          let (TypeDecl _ _ _ t) = d
@@ -96,7 +123,7 @@ addDecl root clusters decls = do
          -- Collect and outgoing links.
          (constructorNodes, links) <- liftM unzip $ sequence $ umap addConstructor d
          return (head constructorNodes, concat links)
-  return ( danglingLinks, (root, (clusterId, destNode)):clusters ) 
+  return ( danglingLinks, (root, (clusterId, destNode)):clusters )
   where
     -- TODO: add InfixConDecl
     -- FIXME: remove duplication
@@ -109,12 +136,12 @@ addDecl root clusters decls = do
       return (rId, links)
 
     mkLabel fs = wrap $ toLabel $ map mkComponent fs
-      where 
+      where
         wrap = case fs of
                 [_] -> id
                 _   -> block
         mkComponent field | fieldName field == Nothing = (fromMaybe "" $ fieldPort field) ++ typeName field
-                          | otherwise = let fn = fromName $ fromJust $ fieldName field 
+                          | otherwise = let fn = fromName $ fromJust $ fieldName field
                                             t = typeName field
                                             text = case head t of
                                                      '{' -> block $ fn ++ " :: | " ++ block t
@@ -129,37 +156,33 @@ addDecl root clusters decls = do
       let fs = zipWith rectype2field [0..] types
       fields2vertRecord ("RecDecl " ++ fromName nm) fs
 
-    rectype2field x (nms,t) = 
+    rectype2field x (nms,t) =
       let fs = type2fields x t
           fName = concat $ intersperse ", " $ map prettyPrint nms
           fLabel = mkLabel fs -- toLabel $ map typeName fs
           in case fs of
-               [f] -> F { fieldName=(Just $ name fName)
-                        , fieldPort=fieldPort f
-                        , typeName=typeName f
-                        , createFieldLink = createFieldLink f
-                        }
+               [f] -> f { fieldName=(Just $ name fName) }
                _   -> F { fieldName=(Just $ name fName)
                         , fieldPort=Nothing
                         , typeName=fLabel
-                        , createFieldLink = (concatMap createFieldLink fs)
+                        , fieldLink = (concatMap fieldLink fs)
                         }
 
     type2fields x t = map (typeName2field x) referencedTypes
       where referencedTypes = [ prettyPrint qname | TyCon qname <- universeBi t ] -- TODO: process TyInfix as well
-      
+
     typeName2field x nm =
       case findDecl nm decls of
         Just d  -> F Nothing (Just port) nm [Just (mkDL nm port)]
         Nothing -> F Nothing Nothing     nm [Nothing]
       where
         port = concat [ "<", nm, show x, "> " ]
-                    
+
     toLabel [] = ""
     toLabel fields = foldr1 (<||>) fields
 
 umap f l = [ f x | x <- universeBi l ]
-  
+
 -- Graph nodes construction helpers
 box label = node $ [ ("shape","box"),("label",label) ]
 record label = node $ [ ("shape","record"),("label",block label) ]
