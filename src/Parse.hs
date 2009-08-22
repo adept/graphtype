@@ -20,7 +20,7 @@ parseFiles = liftM concat . mapM parseFile'
 collectDeclarations moduleDesc =
   [ x | x <- universeBi moduleDesc, isDeclaration x]
   where
-    isDeclaration (DataDecl _ _ _ nm _ _ _) = True
+    isDeclaration (DataDecl _ _ _ _ _ _ _) = True
     isDeclaration (TypeDecl _ _ _ _) = True
     isDeclaration _ = False
 

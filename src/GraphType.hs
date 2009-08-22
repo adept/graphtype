@@ -24,14 +24,14 @@ main = do
   let graph = buildGraph types Inf "Organization"
   writeFile "output.dot" graph
 
--- | Builds dependency graph starting with root declaration `root'.
+-- | Builds dependency graph starting with datatype declaration `root'.
 -- Recursively expands all user-defined `types' referenced from `root', up to `depth'
 buildGraph types depth root = 
   showDot $ do
     -- Allow links that end on cluster boundaries
     attribute("compound", "true")
-    -- Add topmost data declaration and proceed with links going from it
-    (danglingLinks,clusters) <- addDataDecl root [] types
+    -- Add topmost declaration and proceed with links going from it
+    (danglingLinks,clusters) <- addDecl root [] types
     addLinks danglingLinks clusters types
 
 type DeclName = String
@@ -59,13 +59,18 @@ addLinks links@((node,port,decl):rest) clusters types =
       addLinks rest clusters types
     Nothing -> do
        -- Cluster for type 'decl' is absent. Add it and proceed with linking.
-      (danglingLinks, clusters') <- addDataDecl decl clusters types
+      (danglingLinks, clusters') <- addDecl decl clusters types
       addLinks (links++danglingLinks) clusters' types
 
-addDataDecl :: DeclName -> Clusters -> [Decl] -> Dot (Links,Clusters)  
-addDataDecl root clusters types = do
+
+
+addDecl :: DeclName -- Name of the declaration we have to add
+        -> Clusters -- Declarations already added to graph
+        -> [Decl]   -- All known declarations
+        -> Dot (Links,Clusters) -- ( Links, dangling from this declaration, Updated list of clusters )
+addDecl root clusters decls = do
   ( cluster_id, (dest_node, dangling_links) ) <- cluster $ do
-    let (Just t) = findType root types
+    let (Just t) = findDecl root decls
 
     attribute ("label", getName t)
 
@@ -87,7 +92,7 @@ addDataDecl root clusters types = do
       return (nodeId, map (\(p,t) -> (nodeId,p,t)) $ catMaybes $ map snd recordFields)
 
     typeToField (TyCon qname) = 
-      case findType label types of
+      case findDecl label decls of
                  Just t  -> ( port ++ " " ++ label, Just (port, label) ) -- FIXME
                  Nothing -> ( label, Nothing )
       where
@@ -113,7 +118,7 @@ block x = "{ " ++ x ++ " }"
 
 -- Haskell AST manipulation helpers
 
-findType nm types = find ((==nm).getName) types
+findDecl nm decls = find ((==nm).getName) decls
 
 getName (DataDecl _ _ _ nm _ _ _) = fromName nm
 getName (TypeDecl _ nm _ _) = fromName nm
