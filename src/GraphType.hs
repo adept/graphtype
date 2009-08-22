@@ -74,7 +74,7 @@ addLinks links@((DL target mkLink):rest) clusters types =
 -- | Field of the record in dot file
 data Field = F { fieldName::Maybe Name
                , typeName::DeclName
-               , createFieldLink::(Maybe (NodeId -> DanglingLink)) -- substitude record NodeId here and get a dangling link
+               , createFieldLink::[Maybe (NodeId -> DanglingLink)] -- substitude record NodeId here and get a dangling link
                }
 
 addDecl :: DeclName -- Name of the declaration we have to add
@@ -109,29 +109,35 @@ addDecl root clusters decls = do
 
     mkRecord label fs = do
       rId <- record label
-      let links = [ mkLink rId | (F _ _ (Just mkLink)) <- fs ]
+      let links = [ mkLink rId | (F _ _ mkLinks) <- fs, Just mkLink <- mkLinks ]
       return (rId, links)
 
-    mkLabel fs = block $ toLabel $ map typeName fs
+    mkLabel fs = block $ toLabel $ map mkComponent fs
+      where mkComponent field | fieldName field == Nothing = typeName field
+                              | otherwise = let (Just fn ) = fieldName field 
+                                                t = typeName field
+                                                in block $ fromName fn <||> t
 
     addConstructor (ConDecl nm types) = do
       let fs = concatMap type2fields types
       fields2vertRecord ("ConDecl " ++ fromName nm) fs
     addConstructor (RecDecl nm types) = do
-      let fs = concatMap rectype2fields types
+      let fs = map rectype2field types
       fields2vertRecord ("RecDecl " ++ fromName nm) fs
 
     -- TODO: add names
-    rectype2fields (nms,t) = fs
+    rectype2field (nms,t) = F (Just $ name fName) fLabel (concatMap createFieldLink fs)
       where fs = type2fields t
+            fName = concat $ intersperse ", " $ map prettyPrint nms
+            fLabel = toLabel $ map typeName fs
 
     type2fields t = map typeName2field referencedTypes
       where referencedTypes = [ prettyPrint qname | TyCon qname <- universeBi t ] -- TODO: process TyInfix as well
       
     typeName2field nm =
       case findDecl nm decls of
-        Just d  -> F Nothing ( unwords [port, nm] ) (Just (mkDL nm port))
-        Nothing -> F Nothing nm Nothing
+        Just d  -> F Nothing ( unwords [port, nm] ) [Just (mkDL nm port)]
+        Nothing -> F Nothing nm [Nothing]
       where
         port = concat [ "<",nm,">" ]
                     
