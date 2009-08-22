@@ -3,13 +3,24 @@ module Test02 where
 
 import Data.ByteString
 import Data.Typeable
+import Data.Map
+import Data.Word
 
-data Store = Store
-    { storeName_    :: ByteString
-    , syncCode_     :: ByteString
-    , minOrderVal_  :: Float
-    , delivAddress_ :: ByteString
-    , remainders_   :: Remainders
+data Buffer = Buffer
+    { buffer    :: Quantity
+    , greenPart :: Double
+    , redPart   :: Double
     } deriving (Typeable, Show)
 
-type Remainders = [Float]
+data QuantityCell = QuantityCell
+    { increase  :: Increase
+    , decrease  :: Decrease
+    , remainder :: Remainder
+    , updateT   :: UpdTrig
+    } deriving (Typeable, Show)
+
+type Costs        = Map Article (Cost, PrimeCost)
+type BufferInfo   = Map Day Buffer
+type Reason       = ByteString
+type ProdGroup    = Word16
+type Barcode      = Word64
