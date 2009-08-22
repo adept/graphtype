@@ -1,6 +1,7 @@
 module Main where
 
 import Parse (parseFiles)
+import OptionParser
 
 import Language.Haskell.Exts
 import Data.Generics.PlateData (universeBi)
@@ -9,23 +10,15 @@ import Data.List
 import Data.Maybe
 import Control.Monad
 
--- | Drawing depth
-data Depth = Inf | Limit Int
-
--- TODO:
--- * Add CL options for:
--- ** Specifying input file(s)
--- ** Specifying drawing depth
--- ** Specifying root ADT
--- ** Output file name
 main = do
-  let files = [ "../example/Test01.hs", "../example/Test02.hs" ]
+  (Mode depth output, root, files) <- getOpts
   types <- parseFiles files
-  let graph = buildGraph types Inf "Organization"
-  writeFile "output.dot" graph
+  let graph = buildGraph types depth root
+  writeFile output graph
 
 -- | Builds dependency graph starting with datatype declaration `root'.
 -- Recursively expands all user-defined `types' referenced from `root', up to `depth'
+-- TODO: use depth
 buildGraph types depth root = 
   showDot $ do
     -- Allow links that end on cluster boundaries
