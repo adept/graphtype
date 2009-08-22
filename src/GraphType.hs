@@ -22,8 +22,10 @@ main = do
 
 -- | Trim declarations, removing those types and newtypes that do not have references to other user-defined types
 doTrim :: [Decl] -> [Decl]
-doTrim types = types \\ (filter boring candidates)
+doTrim types = if types' == types then types
+                                  else doTrim types'
   where
+    types' = types \\ (filter boring candidates)
     candidates = [ d | d <- types
                      , getDeclType d `elem` ["type", "newtype"] ]
     boring d = null $ catMaybes $ [ findDecl (prettyPrint qname) types | TyCon qname <- universeBi d ]
