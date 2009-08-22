@@ -100,88 +100,122 @@ data Field = F { fieldName::Maybe Name -- ^ name of the Haskell record field, em
                                                              -- obtain a dangling link to target declaration. Empty when field has some unknown type
                }
 
-addDecl :: DeclName -- Name of the declaration we have to add
-        -> Clusters -- Declarations already added to graph
-        -> [Decl]   -- All known declarations
-        -> Dot (Links,Clusters) -- ( Links, dangling from this declaration, Updated list of clusters )
-addDecl root clusters decls = do
-  ( clusterId, (destNode, danglingLinks) ) <- cluster $ do
-    let (Just d) = findDecl root decls
-    let declType = getDeclType d
-
-    attribute ( "label", unwords [ declType, getName d ] )
-
-    if declType == "type"
-       then do
-         -- For simple type declaration, create a single record depicting type.
-         -- Collect and outgoing links.
-         let (TypeDecl _ _ _ t) = d
-         let fs = type2fields 0 t
-         fields2horizRecord fs
-       else do
-         -- For data/newtype declaration, create a single record for each constructor.
-         -- Collect and outgoing links.
-         (constructorNodes, links) <- liftM unzip $ sequence $ umap addConstructor d
-         return (head constructorNodes, concat links)
-  return ( danglingLinks, (root, (clusterId, destNode)):clusters )
+-- | Add a single declaration to graph. As it was already said, each declaration is mapped to a DOT cluster
+addDecl :: DeclName -- ^ Name of the declaration we are adding
+        -> Clusters -- ^ Declarations already added to graph
+        -> [Decl]   -- ^ All known declarations
+        -> Dot (Links,Clusters) -- ^ ( Links dangling from this declaration, Updated list of clusters )
+addDecl declName clusters decls = do
+  ( clusterId, (firstNodeId, danglingLinks) ) <- mkCluster
+  let clusters' = (declName, (clusterId, firstNodeId)):clusters
+  return ( danglingLinks, clusters' )
   where
-    -- TODO: add InfixConDecl
-    -- FIXME: remove duplication
-    fields2horizRecord fs = mkRecord ( mkLabel fs ) fs
-    fields2vertRecord header fs = mkRecord ( header <//> mkLabel fs ) fs
+    -- Find declaration by name
+    Just d = findDecl declName decls
 
+    -- Type, newtype or data
+    declType = getDeclType d
+
+    mkCluster = cluster $ do
+      attribute ( "label", unwords [ declType, getName d ] )
+      if declType == "type"
+         then do
+           -- For simple type declaration, convert all type components to DOT record fields
+           let (TypeDecl _ _ _ t) = d
+           let fs = type2fields 0 t
+           -- Then, convert DOT fields to DOT record.
+           -- Type components will be separated into different "cells" of the record, so that
+           -- it would be possible to create outgoing links from any type component.
+           mkRecord ( mkLabel fs ) fs
+         else do
+           -- For data/newtype declaration, create a single record for each constructor.
+           (constructorNodes, links) <- liftM unzip $ sequence $ [ addConstructor x | x <- universeBi d ]
+           -- Collect all outgoing links.
+           return (head constructorNodes, concat links)
+
+    mkRecord :: String -> [Field] -> Dot (NodeId, Links)
     mkRecord label fs = do
+      -- Create DOT record node
       rId <- record label
-      let links = [ mkLink rId | (F _ _ _ mkLinks) <- fs, Just mkLink <- mkLinks ]
+      -- Instantiate all outgoing links
+      let links = [ mkLink rId | (F _ _ _ links) <- fs, Just mkLink <- links ]
       return (rId, links)
 
+    -- Produce label for record.
+    -- Since label has both human-readable components and special markup that defines record shape,
+    -- special care should be taken while combining information from separate fields:
+    mkLabel :: [Field] -> String
     mkLabel fs = wrap $ toLabel $ map mkComponent fs
       where
+        mkComponent field 
+            -- If field is not named (body of type or component of data), then label is just "<port> type_name":
+          | fieldName field == Nothing = mkPort field ++ typeName field
+            -- If field is named, that we should take care to:
+            -- 1)Preserve position of the topmost port
+            -- 2)Enclose all complex declarations in {}
+          | otherwise = let fn = fromName $ fromJust $ fieldName field -- Haskell field name
+                            t = typeName field -- Haskell type
+                            text = case head t of
+                                     -- If the type is complex (Map Foo Bar), include complex description as DOT subfield
+                                     '{' -> block $ fn ++ " :: | " ++ block t
+                                     -- If the type is simple, just prepend field name
+                                     _   -> fn ++ " :: " ++ t
+                           -- Dont forget the port (if present)
+                        in mkPort field ++ text
+
+        mkPort f = fromMaybe "" $ fieldPort f
+
+        toLabel [] = ""
+        toLabel fields = foldr1 (<||>) fields
+
+        -- When combining more that one field into label, enclose it in {}
         wrap = case fs of
                 [_] -> id
                 _   -> block
-        mkComponent field | fieldName field == Nothing = (fromMaybe "" $ fieldPort field) ++ typeName field
-                          | otherwise = let fn = fromName $ fromJust $ fieldName field
-                                            t = typeName field
-                                            text = case head t of
-                                                     '{' -> block $ fn ++ " :: | " ++ block t
-                                                     _   -> fn ++ " :: " ++ t
-                                            p = fromMaybe "" $ fieldPort field
-                                            in p ++ text
 
+    -- TODO: add InfixConDecl
     addConstructor (ConDecl nm types) = do
       let fs = concat $ zipWith type2fields [0..] types
-      fields2vertRecord ("ConDecl " ++ fromName nm) fs
+      fields2record ("constructor " ++ fromName nm) fs
     addConstructor (RecDecl nm types) = do
       let fs = zipWith rectype2field [0..] types
-      fields2vertRecord ("RecDecl " ++ fromName nm) fs
+      fields2record ("record " ++ fromName nm) fs
 
+    -- DOT records for Haskell data and Haskell record have "header" with the name of the constructor
+    fields2record header fs = mkRecord ( header <//> mkLabel fs ) fs
+
+    -- Collect all type constructors mentioned in type and convert them into DOT fields.
+    -- `x' would be explained below
+    type2fields x t = map (tyCon2field x) cons
+      where cons = [ prettyPrint qname | TyCon qname <- universeBi t ] -- TODO: process TyInfix as well
+
+    -- Convert type `typeName' into DOT field
+    tyCon2field x typeName =
+      case findDecl typeName decls of
+        -- If this is a known (user-defined) type, allocate a port for link and add a dangling link to expanded type description
+        Just d  -> F {fieldName=Nothing, fieldPort=Just port, typeName=typeName, fieldLink=[Just (mkDL typeName port)]}
+        -- If this is a library type, just record its name
+        Nothing -> F {fieldName=Nothing, fieldPort=Nothing, typeName=typeName, fieldLink=[Nothing]}
+      where
+        -- Allocate port. Port name is similar to type name, with sequential number X appended to distinguish between several
+        -- components of the same type within a single declaration
+        port = concat [ "<", typeName, show x, "> " ]
+
+    -- Convert Haskell record field into DOT record field
     rectype2field x (nms,t) =
-      let fs = type2fields x t
-          fName = concat $ intersperse ", " $ map prettyPrint nms
-          fLabel = mkLabel fs -- toLabel $ map typeName fs
+      let fs = type2fields x t -- first, conver all type components into fields
+          fName = concat $ intersperse ", " $ map prettyPrint nms -- there might be more that one Haskell field name ("a,b::Int")
+          fLabel = mkLabel fs  -- produce proper DOT description of the type
           in case fs of
+               -- If it is a simple one-component type, just add a record name and be done with it
                [f] -> f { fieldName=(Just $ name fName) }
-               _   -> F { fieldName=(Just $ name fName)
+               -- If it is multi-component type, ...
+               _   -> F { fieldName=(Just $ name fName) -- add record name, ...
                         , fieldPort=Nothing
-                        , typeName=fLabel
-                        , fieldLink = (concatMap fieldLink fs)
+                        , typeName=fLabel               -- save type description
+                        , fieldLink = (concatMap fieldLink fs) -- collect all links from all type components
                         }
 
-    type2fields x t = map (typeName2field x) referencedTypes
-      where referencedTypes = [ prettyPrint qname | TyCon qname <- universeBi t ] -- TODO: process TyInfix as well
-
-    typeName2field x nm =
-      case findDecl nm decls of
-        Just d  -> F Nothing (Just port) nm [Just (mkDL nm port)]
-        Nothing -> F Nothing Nothing     nm [Nothing]
-      where
-        port = concat [ "<", nm, show x, "> " ]
-
-    toLabel [] = ""
-    toLabel fields = foldr1 (<||>) fields
-
-umap f l = [ f x | x <- universeBi l ]
 
 -- Graph nodes construction helpers
 box label = node $ [ ("shape","box"),("label",label) ]
