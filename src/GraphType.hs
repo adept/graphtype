@@ -32,6 +32,8 @@ buildGraph types depth root =
     attribute("compound", "true")
     -- Try harder to route edges around clusters
     attribute("remincross", "true")
+    -- Try harder to route edges around clusters
+    -- attribute("rankdir", "LR")
     -- Add topmost declaration and proceed with links going from it
     (danglingLinks,clusters) <- addDecl root [] types
     addLinks danglingLinks clusters types
@@ -48,7 +50,7 @@ type ClusterId = NodeId
 
 mkDL :: DeclName -> Port -> NodeId -> DanglingLink
 mkDL target sourcePort sourceNode = 
-  DL target (\cluster targetNode -> edge' sourceNode (Just sourcePort) targetNode Nothing [("lheadz",show cluster)])
+  DL target (\cluster targetNode -> edge' sourceNode (Just sourcePort) targetNode Nothing [("lhead",show cluster)])
 
 -- | Information about clusters already added to the graph:
 -- (Data declaration name, (cluster for this declaration, first node in this cluster))
@@ -73,6 +75,7 @@ addLinks links@((DL target mkLink):rest) clusters types =
 
 -- | Field of the record in dot file
 data Field = F { fieldName::Maybe Name
+               , fieldPort::Maybe Port
                , typeName::DeclName
                , createFieldLink::[Maybe (NodeId -> DanglingLink)] -- substitude record NodeId here and get a dangling link
                }
@@ -93,7 +96,7 @@ addDecl root clusters decls = do
          -- For simple type declaration, create a single record depicting type.
          -- Collect and outgoing links.
          let (TypeDecl _ _ _ t) = d
-         let fs = type2fields t
+         let fs = type2fields 0 t
          fields2horizRecord fs
        else do
          -- For data/newtype declaration, create a single record for each constructor.
@@ -109,37 +112,55 @@ addDecl root clusters decls = do
 
     mkRecord label fs = do
       rId <- record label
-      let links = [ mkLink rId | (F _ _ mkLinks) <- fs, Just mkLink <- mkLinks ]
+      let links = [ mkLink rId | (F _ _ _ mkLinks) <- fs, Just mkLink <- mkLinks ]
       return (rId, links)
 
-    mkLabel fs = block $ toLabel $ map mkComponent fs
-      where mkComponent field | fieldName field == Nothing = typeName field
-                              | otherwise = let (Just fn ) = fieldName field 
-                                                t = typeName field
-                                                in block $ fromName fn <||> t
+    mkLabel fs = wrap $ toLabel $ map mkComponent fs
+      where 
+        wrap = case fs of
+                [_] -> id
+                _   -> block
+        mkComponent field | fieldName field == Nothing = (fromMaybe "" $ fieldPort field) ++ typeName field
+                          | otherwise = let fn = fromName $ fromJust $ fieldName field 
+                                            t = typeName field
+                                            text = case head t of
+                                                     '{' -> block $ fn ++ " :: | " ++ block t
+                                                     _   -> fn ++ " :: " ++ t
+                                            p = fromMaybe "" $ fieldPort field
+                                            in p ++ text
 
     addConstructor (ConDecl nm types) = do
-      let fs = concatMap type2fields types
+      let fs = concat $ zipWith type2fields [0..] types
       fields2vertRecord ("ConDecl " ++ fromName nm) fs
     addConstructor (RecDecl nm types) = do
-      let fs = map rectype2field types
+      let fs = zipWith rectype2field [0..] types
       fields2vertRecord ("RecDecl " ++ fromName nm) fs
 
-    -- TODO: add names
-    rectype2field (nms,t) = F (Just $ name fName) fLabel (concatMap createFieldLink fs)
-      where fs = type2fields t
-            fName = concat $ intersperse ", " $ map prettyPrint nms
-            fLabel = toLabel $ map typeName fs
+    rectype2field x (nms,t) = 
+      let fs = type2fields x t
+          fName = concat $ intersperse ", " $ map prettyPrint nms
+          fLabel = mkLabel fs -- toLabel $ map typeName fs
+          in case fs of
+               [f] -> F { fieldName=(Just $ name fName)
+                        , fieldPort=fieldPort f
+                        , typeName=typeName f
+                        , createFieldLink = createFieldLink f
+                        }
+               _   -> F { fieldName=(Just $ name fName)
+                        , fieldPort=Nothing
+                        , typeName=fLabel
+                        , createFieldLink = (concatMap createFieldLink fs)
+                        }
 
-    type2fields t = map typeName2field referencedTypes
+    type2fields x t = map (typeName2field x) referencedTypes
       where referencedTypes = [ prettyPrint qname | TyCon qname <- universeBi t ] -- TODO: process TyInfix as well
       
-    typeName2field nm =
+    typeName2field x nm =
       case findDecl nm decls of
-        Just d  -> F Nothing ( unwords [port, nm] ) [Just (mkDL nm port)]
-        Nothing -> F Nothing nm [Nothing]
+        Just d  -> F Nothing (Just port) nm [Just (mkDL nm port)]
+        Nothing -> F Nothing Nothing     nm [Nothing]
       where
-        port = concat [ "<",nm,">" ]
+        port = concat [ "<", nm, show x, "> " ]
                     
     toLabel [] = ""
     toLabel fields = foldr1 (<||>) fields
