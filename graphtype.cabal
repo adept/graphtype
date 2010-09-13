@@ -1,6 +1,6 @@
 Name:                graphtype
-Version:             0.1.2
-copyright:           (c) 2009 Dmitry Astapov
+Version:             0.2.0
+copyright:           (c) 2009,2010 Dmitry Astapov
 Synopsis:            A simple tool to illustrate dependencies between Haskell types
 Description:         This tools produces diagrams of Haskell type interdependencies in the given source.
                      Actual drawing is done by graphviz tools (dot).
