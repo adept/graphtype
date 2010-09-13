@@ -17,8 +17,8 @@ import Data.Maybe
 import Control.Monad
 
 main = do
-  (Mode output trim, root, files) <- getOpts
-  types <- parseFiles files
+  (Mode output trim exts, root, files) <- getOpts
+  types <- parseFiles exts files
   let trimmed = if trim 
                 then doTrim types
                 else types

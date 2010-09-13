@@ -10,31 +10,36 @@ import System.Exit
 import System.Console.GetOpt
 import Data.Maybe ( fromMaybe )
 import Control.Monad (when)
+import Language.Haskell.Exts (Extension)
 
 -- | Mode of operation
 data Mode = Mode { output :: String -- ^ Name of the output file
                  , trim :: Bool -- ^ Trim trivial types/newtypes or not
+                 , exts :: Maybe [Extension]
                  }
 
 -- | Default mode: output to "output.dot", dont trim trivial types
-defaultMode = Mode "output.dot" False
-
+defaultMode = Mode {output="output.dot", trim=False, exts=Nothing}
 
 data Flag 
-     = Output FilePath | Trim | Help
+     = Output FilePath | Trim | Help | Extensions [Extension]
        deriving (Eq,Show)
 
 options :: [OptDescr Flag]
 options =
   [ Option ['o']        ["output"]  (OptArg getOutput "file") "Name of the output file (default: output.dot)",
     Option ['t']        ["trim"]    (NoArg Trim)    "Trim types/newtype that do not have references to other user-defined types",
+    Option ['e']        ["exts"]    (ReqArg getExts "extensions") "Comma-separated list of extensions to enable when parsing sources",
     Option []           ["help"]    (NoArg Help)    "Show this help" ]
 
 getOutput Nothing = Output "output.dot"
 getOutput (Just s) = Output s
 
-update (Output f) m = m { output = f }
-update Trim m       = m { trim = True }
+getExts exts = Extensions $ read $ "[" ++ exts ++ "]"
+
+update (Output f) m      = m { output = f }
+update Trim m            = m { trim = True }
+update (Extensions es) m = m { exts = Just es }
 
 getOpts :: IO (Mode, String, [FilePath])
 getOpts = getArgs >>= \argv ->

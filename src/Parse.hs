@@ -6,11 +6,15 @@ import Data.Generics.PlateData (universeBi)
 import Control.Monad (liftM)
 import System.Exit (exitFailure)
 
-parseFiles :: [FilePath] -> IO [Decl]
-parseFiles = liftM concat . mapM parseFile'
+parseFiles :: Maybe [Extension] -> [FilePath] -> IO [Decl]
+parseFiles exts = liftM concat . mapM parseFile'
   where
+    parser = case exts of
+      Nothing -> parseFile
+      Just es -> \f -> parseFileWithMode defaultParseMode{ parseFilename = f, extensions = es} f
+      
     parseFile' fname = do
-      res <- parseFile fname
+      res <- parser fname
       case res of
         ParseOk m -> return $ collectDeclarations m
         ParseFailed srcLoc message -> do
